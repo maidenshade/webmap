@@ -15,7 +15,7 @@ export function setupSidebar(metrics, onMetricChange) {
     <select id="metric-select" style="width: 100%; margin-bottom: 1em;">
       ${metrics.map(m => `<option value="${m.id}">${m.name}</option>`).join('')}
     </select>
-    <div id="metric-description" style="margin-bottom: 1em; font-size: 0.9em; color: #444;"></div>
+    <div id="metric-description" style="margin-bottom: 1em; font-size: 0.9em; color: white;"></div>
 
     <label for="view-mode"><strong>Select county details to view:</strong></label>
     <select id="view-mode" style="width: 100%; margin-bottom: 1em;">
@@ -132,14 +132,14 @@ function generateOwnerTypeBreakdownHTML(props) {
   };
 
   function buildGroupSection(title, keys) {
-    let section = `<h4><span style="color: blue;">${title}</span></h4><ul>`;
+    let section = `<h4><span style="color: yellow;">${title}</span></h4><ul>`;
     keys.forEach(base => {
       const label = labelMap[base] || base.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
       const acresVal = formatVal(props[`${base}_acres`]);
       const pctVal = formatVal(props[`${base}_pct`] ?? props[`${base}_percent`], true);
 
       if (acresVal) {
-        section += `<li><strong>${label}</strong>: <span style="color: gray"> ${acresVal}</span>, <span style="color: blue;">${pctVal}</span></li>`;
+        section += `<li><strong>${label}</strong>: <span style="color: gray"> ${acresVal}</span>, <span style="color: yellow;">${pctVal}</span></li>`;
       } else {
         section += `<li>${label}: N/A</li>`;
       }
@@ -150,21 +150,21 @@ function generateOwnerTypeBreakdownHTML(props) {
 
   function buildSummarySection() {
     return `
-      <h4><span style="color: blue;">Subtotals:</span></h4>
+      <h4><span style="color: yellow;">Subtotals:</span></h4>
       <ul>
-        <li><strong>Private</strong>: <span style="color: gray;">${formatVal(props.private_acres) || 'N/A'}</span>, <span style="color: blue;">${formatVal(props.pct_private, true) || ''}</span></li>
-        <li><strong>Public</strong>: <span style="color: gray;">${formatVal(props.public_acres) || 'N/A'}</span>, <span style="color: blue;">${formatVal(props.pct_public, true) || ''}</span></li>
-        <li><strong>Unknown</strong>: <span style="color: gray;">${formatVal(props.unknown_acres) || 'N/A'}</span>, <span style="color: blue;">${formatVal(props.pct_unknown, true) || ''}</span></li>
+        <li><strong>Private</strong>: <span style="color: gray;">${formatVal(props.private_acres) || 'N/A'}</span>, <span style="color: yellow;">${formatVal(props.pct_private, true) || ''}</span></li>
+        <li><strong>Public</strong>: <span style="color: gray;">${formatVal(props.public_acres) || 'N/A'}</span>, <span style="color: yellow;">${formatVal(props.pct_public, true) || ''}</span></li>
+        <li><strong>Unknown</strong>: <span style="color: gray;">${formatVal(props.unknown_acres) || 'N/A'}</span>, <span style="color: yellow;">${formatVal(props.pct_unknown, true) || ''}</span></li>
       </ul>
     `;
   }
 
   function buildAbsenteeSection() {
     return `
-      <h4><span style="color: blue;">Absentee Ownership</span></h4>
+      <h4><span style="color: yellow;">Absentee Ownership</span></h4>
       <ul>
-        <li><strong>Out of county</strong>: <span style="color: gray;">${formatVal(props.out_of_county_acres) || 'N/A'}</span>, <span style="color: blue;">${formatVal(props.out_of_county_percent, true) || ''}</span></li>
-        <li><strong>Out of state</strong>: <span style="color: gray;">${formatVal(props.out_of_state_acres) || 'N/A'}</span>, <span style="color: blue;">${formatVal(props.out_of_state_percent, true) || ''}</span></li>
+        <li><strong>Out of county</strong>: <span style="color: gray;">${formatVal(props.out_of_county_acres) || 'N/A'}</span>, <span style="color: yellow;">${formatVal(props.out_of_county_percent, true) || ''}</span></li>
+        <li><strong>Out of state</strong>: <span style="color: gray;">${formatVal(props.out_of_state_acres) || 'N/A'}</span>, <span style="color: yellow;">${formatVal(props.out_of_state_percent, true) || ''}</span></li>
       </ul>
     `;
   }
@@ -205,7 +205,7 @@ export function updateSidebar(props, ownerData, aliasMap, metrics, currentMetric
   const metricName = metrics.find(m => m.id === currentMetricId)?.name || 'Metric';
 
   let html = `<h3>${countyName}, ${stateAbbr}</h3>`;
-  html += `<p><strong>${metricName}</strong>: <span style="color: red;">${metricValue}</span></p>`;
+  html += `<p><strong>${metricName}</strong>: <span style="color: yellow;">${metricValue}</span></p>`;
 
   if (viewMode === 'top20') {
     const owners = ownerData[geoid] || [];
@@ -234,7 +234,7 @@ export function updateSidebar(props, ownerData, aliasMap, metrics, currentMetric
       `;
     });
 
-    
+
     html += `</ul>`;
   } else if (viewMode === 'top5corp') {
     const corpOwners = corpOwnerData[geoid] || [];
