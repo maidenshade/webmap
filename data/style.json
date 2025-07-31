@@ -1,14 +1,14 @@
 {
   "version": 8,
   "center": [-98.5795, 39.8283],
-  "zoom": 4,
+  "zoom": 2,
   "glyphs": "https://api.maptiler.com/fonts/{fontstack}/{range}.pbf?key=3nYutwPxWjYusU9BzIPb",
   "sprite": "https://api.maptiler.com/maps/basic/sprite",
   "sources": {
     "combined": {
       "type": "vector",
       "url": "https://api.maptiler.com/tiles/01986227-60a5-7673-a52f-d47cd9c7274b/tiles.json?key=3nYutwPxWjYusU9BzIPb",
-      "minzoom": 3,
+      "minzoom": 1,
       "maxzoom": 12
     }
   },

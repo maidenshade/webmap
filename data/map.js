@@ -3,13 +3,12 @@ import { groupOwners } from './utils.js';
 
 
 
-
 export function initMap(ownerData, aliasMap, onCountyClick, onCountyHover, onCountyLeave) {
   const map = new maplibregl.Map({
     container: 'map',
     style: './style.json',
     center: [-98.5795, 39.8283],
-    zoom: 4
+    zoom: 2
   });
 
   map.on('load', () => {
