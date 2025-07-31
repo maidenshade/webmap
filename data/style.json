@@ -1,0 +1,51 @@
+{
+  "version": 8,
+  "center": [-98.5795, 39.8283],
+  "zoom": 4,
+  "sources": {
+    "combined": {
+      "type": "vector",
+      "url": "mbtiles://combined",
+      "minzoom": 3,
+      "maxzoom": 12
+    }
+  },
+  "layers": [
+    {
+      "id": "summary-fill",
+      "type": "fill",
+      "source": "combined",
+      "source-layer": "summary",
+      "paint": {
+        "fill-color": [
+          "case",
+          ["==", ["get", "gini_private"], null], "#cccccc",
+          [
+          "interpolate",
+          ["linear"],
+          ["get", "gini_private"],
+          0.001, "#ffffff",
+          0.29, "#fff2f2",
+          0.73, "#ffbfbf",
+          0.84, "#ff8080",
+          0.91, "#ff4040",
+          1, "#981010"
+        ]
+      ],
+      "fill-opacity": 0.7
+      }
+
+    },
+    {
+      "id": "states-outline",
+      "type": "line",
+      "source": "combined",
+      "source-layer": "states",
+      "paint": {
+        "line-color": "#636363",
+        "line-width": 0.8
+      }
+    }
+
+  ]
+}

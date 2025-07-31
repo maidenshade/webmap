@@ -1,0 +1,22 @@
+{
+  "options": {
+    "paths": {
+      "root": "/styles",
+      "data": "/data"
+    }
+  },
+  "data": {
+    "combined": {
+      "mbtiles": "combined.mbtiles"
+    }
+  },
+  "styles": {
+    "my-style": {
+      "style": "style.json",
+      "tilejson": {
+        "vector": true
+      },
+      "data": ["combined"]
+    }
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "options": {
+    "paths": {
+      "root": "."
+    },
+    "formatQuality": {
+      "jpeg": 85,
+      "webp": 90
+    },
+    "headers": {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET,OPTIONS",
+      "Access-Control-Allow-Headers": "*"
+    }
+  },
+  "data": {
+    "combined": {
+      "mbtiles": "combined.mbtiles"
+    }
+  },
+  "styles": {
+    "summary-style": {
+      "style": "style.json",
+      "tilejson": {
+        "vector": true
+      },
+      "data": ["combined"]
+    }
+  }
+}

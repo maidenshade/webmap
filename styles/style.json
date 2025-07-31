@@ -1,0 +1,33 @@
+{
+  "version": 8,
+  "sources": {
+    "combined": {
+      "type": "vector",
+      "url": "mbtiles://combined",
+      "minzoom": 3,
+      "maxzoom": 12
+    }
+  },
+  "layers": [
+    {
+      "id": "summary-fill",
+      "type": "fill",
+      "source": "combined",
+      "source-layer": "summary",
+      "paint": {
+        "fill-color": "#888888",
+        "fill-opacity": 0.4
+      }
+    },
+    {
+      "id": "states-fill",
+      "type": "fill",
+      "source": "combined",
+      "source-layer": "states",
+      "paint": {
+        "fill-color": "#0044ff",
+        "fill-opacity": 0.5
+      }
+    }
+  ]
+}

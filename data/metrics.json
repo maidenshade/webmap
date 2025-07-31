@@ -1,0 +1,145 @@
+{
+  "metrics": [
+    {
+      "id": "gini_private",
+      "name": "Land Ownership Gini Index",
+      "category": "Inequality Metrics",
+      "description": "Measures inequality of private land ownership.",
+      "stops": [
+        [0.001, "#ffffff"],
+        [0.29, "#fff2f2"],
+        [0.73, "#ffbfbf"],
+        [0.84, "#ff8080"],
+        [0.91, "#ff4040"],
+        [1, "#981010"]
+      ]
+    },
+    {
+      "id": "weighted_hhi_spec",
+      "name": "Weighted Herfindahl-Hirschman Index (HHI)",
+      "category": "Inequality Metrics",
+      "description": "Concentration of private land ownership, with natural resource and investment ownership types weighted.",
+      "stops": [
+        [0, "#ffffff"],
+        [130, "#bee4f4"],
+        [500, "#91b7c6"],
+        [1200, "#678c9a"],
+        [2500, "#3f6370"],
+        [6000, "#173d49"]
+      ]
+    },
+    {
+      "id": "out_of_state_percent",
+      "name": "Percent Absentee Ownership",
+      "category": "Other Metrics",
+      "stops": [
+        [0, "#ffffff"],
+        [7, "#ffef6f"],
+        [15, "#ffd656"],
+        [25, "#ffbe3d"],
+        [45, "#eca621"],
+        [90, "#d28f00"]
+      ],
+      "description": "Percentage of out-of-state absentee-owned land."
+    },
+    {
+      "id": "natural resource corporation_percent",
+      "name": "Percent Natural Resources Corporations",
+      "category": "Ownership Types",
+      "stops": [
+        [0, "#ffffff"],
+        [5, "#c19962"],
+        [12, "#a9824d"],
+        [20, "#906c38"],
+        [35, "#795624"],
+        [75, "#62420f"]
+      ],
+      "description": "Percentage of land owned by natural resources corporations."
+    },
+    {
+      "id": "pct_top5_private",
+      "name": "Percent Top 5 Private Owners",
+      "category": "Other Metrics",
+      "stops": [
+        [0, "#ffffff"],
+        [6, "#bf70c4"],
+        [15, "#a659ac"],
+        [30, "#8e4394"],
+        [55, "#772d7d"],
+        [100, "#601567"]
+      ],
+      "description": "Percentage of county owned by the top 5 private owners."
+    },
+    {
+      "id": "pct_corp",
+      "name": "Percent Corporate Ownership",
+      "category": "Ownership Types",
+      "description": "Percentage of land owned by corporations.",
+      "stops": [
+        [0, "#ffffff"],
+        [5, "#ff97c1"],
+        [15, "#ff7caa"],
+        [25, "#ff5f93"],
+        [40, "#ff3f7c"],
+        [100, "#ff0967"]
+      ]
+    },
+    {
+      "id": "investors_percent",
+      "name": "Percent Investor Ownership",
+      "category": "Ownership Types",
+      "description": "Percentage of county owned by investors.",
+      "stops": [
+        [0, "#ffffff"],
+        [2, "#70ffff"],
+        [4, "#4efcff"],
+        [8, "#1ce3fd"],
+        [15, "#00cae4"],
+        [40, "#00b2cb"]
+      ]
+    },
+    {
+      "id": "pct_spec",
+      "name": "Percent Speculative Ownership",
+      "category": "Ownership Types",
+      "stops": [
+        [0, "#ffffff"],
+        [4, "#e5f5e0"],
+        [10, "#c7e9c0"],
+        [15, "#a1d99b"],
+        [30, "#41ab5d"],
+        [65, "#238b45"]
+      ],
+      "description": "Percentage of county owned by investors and natural resources corporations."
+    },
+    {
+      "id": "pct_public",
+      "name": "Percent Public Ownership",
+      "category": "Ownership Types",
+      "stops": [
+        [0, "#f7fcf5"],
+        [10, "#93a9ff"],
+        [20, "#7893ff"],
+        [40, "#5c7eff"],
+        [65, "#3c6aff"],
+        [100, "#0056eb"]
+      ],
+      "description": "Percentage of publicly owned land (municipal, county, tribal, federal, and state)."
+    },
+    {
+      "id": "heirs_percent",
+      "name": "Percent Heirs Property",
+      "category": "Ownership Types",
+      "stops": [
+        [0, "#f7fcf5"],
+        [2, "#ffe663"],
+        [5, "#ffd350"],
+        [10, "#ffc03c"],
+        [15, "#ffae27"],
+        [20, "#fe9c08"],
+        [50, "#ea8b00"]
+      ],
+      "description": "Percentage of heirs' property in the county."
+    }
+  ]
+}
