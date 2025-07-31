@@ -5,7 +5,7 @@
   "sources": {
     "combined": {
       "type": "vector",
-      "url": "https://api.maptiler.com/tiles/01986227-60a5-7673-a52f-d47cd9c7274b/{z}/{x}/{y}.pbf?key=3nYutwPxWjYusU9BzIPb",
+      "url": "https://api.maptiler.com/tiles/01986227-60a5-7673-a52f-d47cd9c7274b/tiles.json?key=3nYutwPxWjYusU9BzIPb",
       "minzoom": 3,
       "maxzoom": 12
     }
