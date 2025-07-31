@@ -1,7 +1,7 @@
 {
   "version": 8,
   "center": [-98.5795, 39.8283],
-  "zoom": 4,
+  "zoom": 3,
   "glyphs": "https://api.maptiler.com/fonts/{fontstack}/{range}.pbf?key=3nYutwPxWjYusU9BzIPb",
   "sprite": "https://api.maptiler.com/maps/basic/sprite",
   "sources": {
