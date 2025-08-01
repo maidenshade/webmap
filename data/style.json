@@ -37,6 +37,25 @@
         "fill-opacity": 0.7
       }
     },
+      {
+      "id": "county-labels",
+      "type": "symbol",
+      "source": "combined",
+      "source-layer": "summary",
+      "minzoom": 6,
+      "layout": {
+        "text-field": ["get", "NAME"],
+        "text-font": ["Open Sans Regular", "Arial Unicode MS Regular"],
+        "text-size": 12,
+        "text-anchor": "center"
+      },
+      "paint": {
+        "text-color": "#ffffff",
+        "text-halo-color": "#000000",
+        "text-halo-width": 1
+      }
+    },
+
     {
       "id": "states-outline",
       "type": "line",
