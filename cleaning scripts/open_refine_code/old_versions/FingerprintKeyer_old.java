@@ -23,6 +23,10 @@ public class FingerprintKeyer extends Keyer {
             "\\b(?:a|an|the|of|and|in|on|at|to|for|by|with|from)\\b",
             Pattern.UNICODE_CHARACTER_CLASS);
 
+    protected static final Pattern PARENTHETICALS = Pattern.compile(
+            "\\([^)]*\\)",
+            Pattern.UNICODE_CHARACTER_CLASS);
+
     protected static final Pattern DBA_TAIL = Pattern.compile(
             "\\bdba\\b.*$",
             Pattern.UNICODE_CHARACTER_CLASS);
@@ -34,32 +38,23 @@ public class FingerprintKeyer extends Keyer {
     protected static final Pattern INCORPORATED_VARIANTS = Pattern.compile(
             "\\b(?:incoporated|incorported|incorprated|incorporatd)\\b",
             Pattern.UNICODE_CHARACTER_CLASS);
+        
+    protected static final Pattern INTEREST_VARIANTS = Pattern.compile(
+        "\\b(?:interest|interests|int|ints|intersts)\\b",
+        Pattern.UNICODE_CHARACTER_CLASS);
 
     protected static final Pattern COMPANY_VARIANTS = Pattern.compile(
             "\\b(?:compny|comapny|companey)\\b",
-            Pattern.UNICODE_CHARACTER_CLASS);
-
-    protected static final Pattern INTEREST_VARIANTS = Pattern.compile(
-            "\\b(?:interest|interests|int|ints|intersts)\\b",
             Pattern.UNICODE_CHARACTER_CLASS);
 
     protected static final Pattern TRANS_VARIANTS = Pattern.compile(
             "\\btrans\\b",
             Pattern.UNICODE_CHARACTER_CLASS);
 
-    // Safe development normalization:
-    // - deve / develop / development -> development
-    // - dev handled separately only in corporate contexts
-    protected static final Pattern DEVELOPMENT_VARIANTS = Pattern.compile(
-            "\\b(?:deve|develop|development)\\b",
-            Pattern.UNICODE_CHARACTER_CLASS);
+   protected static final Pattern DEVELOPMENT_VARIANTS = Pattern.compile(
+        "\\b(?:deve|develop|development|dev)\\b",
+        Pattern.UNICODE_CHARACTER_CLASS);
 
-    // Standalone "dev" only when followed by corporate structure tokens
-    protected static final Pattern DEV_CORP_CONTEXT = Pattern.compile(
-            "\\bdev\\b(?=\\s+(?:co|company|corp|corporation|llc|lp|ltd|limited|part|partnership)\\b)",
-            Pattern.UNICODE_CHARACTER_CLASS);
-
-    // WV-only owner/state cleanup for now
     protected static final Pattern WEST_VIRGINIA_FULL = Pattern.compile(
             "\\bwest\\s+virginia\\b",
             Pattern.UNICODE_CHARACTER_CLASS);
@@ -93,8 +88,7 @@ public class FingerprintKeyer extends Keyer {
     protected static final Pattern SPLIT_SE = Pattern.compile("\\bs\\s+e\\b", Pattern.UNICODE_CHARACTER_CLASS);
     protected static final Pattern SPLIT_SW = Pattern.compile("\\bs\\s+w\\b", Pattern.UNICODE_CHARACTER_CLASS);
 
-    // Conservative removable owner tokens
-    // "fee" is included because it is common noise in owner strings
+    // Remove from OWNER names only
     protected static final Set<String> OWNER_REMOVABLE_TOKENS = Set.of(
             "co",
             "company",
@@ -111,11 +105,9 @@ public class FingerprintKeyer extends Keyer {
             "pllc",
             "plc",
             "pc",
+            "int",
             "intl",
-            "wv",
-            "interest",
-            "interests",
-            "fee"
+            "wv"
     );
 
     private static final ImmutableMap<String, String> NONDIACRITICS = ImmutableMap.<String, String> builder()
@@ -143,7 +135,7 @@ public class FingerprintKeyer extends Keyer {
 
     @Override
     public String key(String s, Object... o) {
-        if (s == null || (o != null && o.length > 0)) {
+        if (s == null || o != null && o.length > 0) {
             throw new IllegalArgumentException("Fingerprint keyer accepts a single string parameter");
         }
 
@@ -164,9 +156,8 @@ public class FingerprintKeyer extends Keyer {
 
     protected String normalizeOwner(String s) {
         s = basicNormalize(s);
-
-        // Do not globally strip parentheses; that can hide true owners.
-        // Instead, remove specific noise tokens later (e.g. "fee").
+        s = removeParentheticals(s);
+        s = collapseWhitespace(s);
 
         s = removeDbaTail(s);
         s = collapseWhitespace(s);
@@ -243,6 +234,10 @@ public class FingerprintKeyer extends Keyer {
         return WHITESPACE.matcher(s).replaceAll(" ").trim();
     }
 
+    protected String removeParentheticals(String s) {
+        return PARENTHETICALS.matcher(s).replaceAll(" ");
+    }
+
     protected String removeDbaTail(String s) {
         return DBA_TAIL.matcher(s).replaceAll("");
     }
@@ -266,20 +261,20 @@ public class FingerprintKeyer extends Keyer {
         return s;
     }
 
-    protected String normalizeOwnerDescriptors(String s) {
-        s = TRANS_VARIANTS.matcher(s).replaceAll("transmission");
-        s = INTEREST_VARIANTS.matcher(s).replaceAll("interest");
-        s = DEVELOPMENT_VARIANTS.matcher(s).replaceAll("development");
-        s = DEV_CORP_CONTEXT.matcher(s).replaceAll("development");
+ protected String normalizeOwnerDescriptors(String s) {
+    s = TRANS_VARIANTS.matcher(s).replaceAll("transmission");
+    s = INTEREST_VARIANTS.matcher(s).replaceAll("interest");
+    s = DEVELOPMENT_VARIANTS.matcher(s).replaceAll("development");
+    return s;
+}
+
+    // For OWNER names: normalize WV forms to "wv", then remove "wv" as token
+    protected String normalizeAndRemoveWvVariants(String s) {
+        s = normalizeStateVariantsOnly(s);
         return s;
     }
 
-    // For OWNER names: normalize WV forms to "wv", then remove "wv" as token later
-    protected String normalizeAndRemoveWvVariants(String s) {
-        return normalizeStateVariantsOnly(s);
-    }
-
-    // For STATE field: normalize to "wv" but do not remove it
+    // For STATE field: normalize to "wv" but DO NOT remove it
     protected String normalizeStateVariantsOnly(String s) {
         s = WEST_VIRGINIA_FULL.matcher(s).replaceAll("wv");
         s = WEST_VA.matcher(s).replaceAll("wv");

@@ -5,7 +5,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -23,6 +22,33 @@ import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVPrinter;
 import org.apache.commons.csv.CSVRecord;
 
+/**
+ * Canonicalizes owner names from a CSV using type-specific blocking and merge rules.
+ *
+ * Blocking:
+ * - STRICT types ("other", "heirs"): owner + city + state
+ * - LOOSE types ("general corporate", "natural resource corporation",
+ *   "investors", "banking and finance"): owner + state
+ *
+ * Output:
+ * - augmented row-level CSV
+ * - review CSV for inspection
+ * - cluster summary CSV (one row per cluster)
+ *
+ * Usage:
+ * java CsvCanonicalizer
+ *   input.csv
+ *   output.csv
+ *   review.csv
+ *   cluster_summary.csv
+ *   owner
+ *   canon_owner
+ *   city
+ *   state
+ *   owner_type_code
+ *   mailAddressColumn
+ *   [ngramSize]
+ */
 public class CsvCanonicalizer {
 
     // ---------- thresholds ----------
@@ -36,41 +62,16 @@ public class CsvCanonicalizer {
 
     // ---------- owner type groups ----------
     private static final Set<String> STRICT_TYPES = Set.of(
-            "other",
-            "heirs"
-    );
+        "other",
+        "heirs"
+);
 
-    // investors are intentionally NOT here; they group by mail address instead
-    private static final Set<String> LOOSE_TYPES = Set.of(
-            "general corporate",
-            "natural resource corporation",
-            "banking and finance"
-    );
-
-    // Generic tokens to ignore when building anchor keys
-    private static final Set<String> GENERIC_OWNER_TOKENS = Set.of(
-            "land",
-            "management",
-            "recovery",
-            "resources",
-            "resource",
-            "holdings",
-            "holding",
-            "investments",
-            "investment",
-            "properties",
-            "property",
-            "group",
-            "company",
-            "co",
-            "corp",
-            "corporation",
-            "llc",
-            "inc",
-            "development",
-            "energy",
-            "wv"
-    );
+private static final Set<String> LOOSE_TYPES = Set.of(
+        "general corporate",
+        "natural resource corporation",
+        "investors",
+        "banking and finance"
+);
 
     static class RowData {
         int rowNumber;
@@ -136,12 +137,12 @@ public class CsvCanonicalizer {
     }
 
     public static void main(String[] args) throws Exception {
-        if (args.length < 10) {
+        if (args.length < 11) {
             System.err.println("Usage:");
             System.err.println("  java CsvCanonicalizer <input.csv> <output.csv> <review.csv> <clusterSummary.csv> <ownerColumn> <canonicalColumn> <cityColumn> <stateColumn> <ownerTypeColumn> <mailAddressColumn> [ngramSize]");
             System.err.println();
             System.err.println("Example:");
-            System.err.println("  java CsvCanonicalizer owners.csv owners_out.csv owners_review.csv owners_clusters.csv owner canon_owner city state owner_type_code mailadd 2");
+            System.err.println("  java CsvCanonicalizer owners.csv owners_out.csv owners_review.csv owners_clusters.csv owner canon_owner city state owner_type_code 2");
             System.exit(1);
         }
 
@@ -204,12 +205,13 @@ public class CsvCanonicalizer {
                      .parse(reader)) {
 
             headers = new ArrayList<>(parser.getHeaderNames());
+            System.out.println("Headers found: " + headers);
 
-            ownerColumn = resolveColumnName(headers, ownerColumn);
-            cityColumn = resolveColumnName(headers, cityColumn);
-            stateColumn = resolveColumnName(headers, stateColumn);
-            ownerTypeColumn = resolveColumnName(headers, ownerTypeColumn);
-            mailAddressColumn = resolveColumnName(headers, mailAddressColumn);
+           ownerColumn = resolveColumnName(headers, ownerColumn);
+           mailAddressColumn = resolveColumnName(headers, mailAddressColumn);
+           cityColumn = resolveColumnName(headers, cityColumn);
+           stateColumn = resolveColumnName(headers, stateColumn);
+           ownerTypeColumn = resolveColumnName(headers, ownerTypeColumn);
 
             int rowIndex = 0;
             int clusterCounter = 1;
@@ -227,21 +229,16 @@ public class CsvCanonicalizer {
                 row.stateOriginal = safeString(record.get(stateColumn));
                 row.ownerTypeOriginal = safeString(record.get(ownerTypeColumn));
                 row.mailAddressOriginal = safeString(record.get(mailAddressColumn));
-
-                row.ownerTypeNormalized = normalizeOwnerType(row.ownerTypeOriginal);
+                row.mailAddressNormalized = normalizeMailAddress(row.mailAddressOriginal);
 
                 row.ownerNormalized = wordKeyer.normalizeOwner(row.ownerOriginal);
                 row.cityNormalized = wordKeyer.normalizeGeneric(row.cityOriginal);
                 row.stateNormalized = wordKeyer.normalizeState(row.stateOriginal);
-                row.mailAddressNormalized = normalizeMailAddress(row.mailAddressOriginal);
+                row.ownerTypeNormalized = normalizeOwnerType(row.ownerTypeOriginal);
 
-                // Extra aggressive cleanup only for natural resource corporations
                 if (shouldApplyAggressiveTailStripping(row.ownerTypeNormalized)) {
-                    String stripped = stripAggressiveResourceTail(row.ownerNormalized);
-                    if (!stripped.isBlank() && tokenCount(stripped) >= 2) {
-                        row.ownerNormalized = stripped;
-                    }
-                }
+    row.ownerNormalized = stripAggressiveResourceTail(row.ownerNormalized);
+}
 
                 row.compositeNormalized = buildCompositeForType(
                         row.ownerNormalized,
@@ -259,10 +256,10 @@ public class CsvCanonicalizer {
                     cluster.clusterKey = row.clusterKey;
                     cluster.clusterId = String.format("CL%06d", clusterCounter++);
                     cluster.blockingMode = blockingModeForType(
-                            row.ownerTypeNormalized,
-                            row.ownerNormalized,
-                            row.mailAddressNormalized
-                    );
+                       row.ownerTypeNormalized,
+                       row.ownerNormalized,
+                       row.mailAddressNormalized
+                     );
                     clusters.put(row.clusterKey, cluster);
                 }
 
@@ -303,20 +300,9 @@ public class CsvCanonicalizer {
 
         // finalize cluster-level attributes
         for (ClusterData cluster : clusters.values()) {
+            cluster.canonicalOwner = chooseCanonicalValue(cluster.ownerCounts);
+            cluster.canonicalOwnerNorm = wordKeyer.normalizeOwner(cluster.canonicalOwner);
             cluster.dominantOwnerType = chooseDominantOwnerType(cluster, rows);
-
-            if ("investors".equals(cluster.dominantOwnerType)) {
-                String investorCanonical = chooseInvestorCanonicalFromMailAddress(cluster, rows);
-                if (!investorCanonical.isBlank()) {
-                    cluster.canonicalOwner = investorCanonical;
-                } else {
-                    cluster.canonicalOwner = chooseCanonicalValue(cluster.ownerCounts);
-                }
-            } else {
-                cluster.canonicalOwner = chooseCanonicalValue(cluster.ownerCounts);
-            }
-
-            cluster.canonicalOwnerNorm = wordKeyer.normalizeGeneric(cluster.canonicalOwner);
             cluster.representativeCityNorm = mostCommonCityNorm(cluster, rows);
 
             int maxScopeCityCount = 0;
@@ -333,31 +319,22 @@ public class CsvCanonicalizer {
             cluster.scopeCityCount = maxScopeCityCount;
 
             for (Integer rowIndex : cluster.rowIndexes) {
-                RowData row = rows.get(rowIndex);
+            RowData row = rows.get(rowIndex);
 
-                if ("investors".equals(row.ownerTypeNormalized) && !row.mailAddressNormalized.isBlank()) {
-                    row.canonicalOwner = "investor " + row.mailAddressNormalized;
-                } else {
-                    row.canonicalOwner = cluster.canonicalOwner;
-                }
-
-                row.clusterId = cluster.clusterId;
-                row.clusterSize = cluster.rowIndexes.size();
-            }
+            if ("investors".equals(row.ownerTypeNormalized) && !row.mailAddressNormalized.isBlank()) {
+               row.canonicalOwner = "investor " + row.mailAddressNormalized;
+            } else {
+            row.canonicalOwner = cluster.canonicalOwner;
         }
+        row.clusterId = cluster.clusterId;
+        row.clusterSize = cluster.rowIndexes.size();
+        }
+    }
 
         // evaluate row-level merge decisions
         for (ClusterData cluster : clusters.values()) {
             for (Integer rowIndex : cluster.rowIndexes) {
                 RowData row = rows.get(rowIndex);
-
-                if ("investors".equals(cluster.dominantOwnerType) && !row.mailAddressNormalized.isBlank()) {
-                    row.ownerSimilarity = 1.0;
-                    row.sameCityFlag = true;
-                    row.mergeDecision = "AUTO_MERGE_INVESTOR_MAILADDR";
-                    row.needsReview = "";
-                    continue;
-                }
 
                 row.ownerSimilarity = diceCoefficientBigrams(
                         row.ownerNormalized,
@@ -391,60 +368,43 @@ public class CsvCanonicalizer {
     // Blocking logic
     // ------------------------------------------------------------
 
-    private static String buildCompositeForType(
-            String ownerNorm,
-            String cityNorm,
-            String stateNorm,
-            String ownerTypeNorm,
-            String mailAddressNorm) {
+private static String buildCompositeForType(
+        String ownerNorm,
+        String cityNorm,
+        String stateNorm,
+        String ownerTypeNorm,
+        String mailAddressNorm) {
 
-        // Investors: group by normalized mailing address
-        if ("investors".equals(ownerTypeNorm) && mailAddressNorm != null && !mailAddressNorm.isBlank()) {
-            return "investor|" + mailAddressNorm + "|" + stateNorm;
-        }
-
-        // Natural resource corporations: anchor-based blocking if possible
-        if ("natural resource corporation".equals(ownerTypeNorm)) {
-            String anchor = buildAnchorKey(ownerNorm);
-            if (!anchor.isBlank() && !isGenericOwnerName(ownerNorm)) {
-                return "anchor|" + anchor + "|" + stateNorm;
-            }
-        }
-
-        // Other loose types can match across cities, but not if the name is too generic
-        if (LOOSE_TYPES.contains(ownerTypeNorm) && !isGenericOwnerName(ownerNorm)) {
-            return ownerNorm + " | " + stateNorm;
-        }
-
-        if (isShortName(ownerNorm) && !isGenericOwnerName(ownerNorm)) {
-            return ownerNorm + " | " + stateNorm;
-        }
-
-        return ownerNorm + " | " + cityNorm + " | " + stateNorm;
+    // Investors: use mailing address when available
+    if ("investors".equals(ownerTypeNorm) && mailAddressNorm != null && !mailAddressNorm.isBlank()) {
+        return "investor|" + mailAddressNorm + "|" + stateNorm;
     }
 
-    private static String blockingModeForType(
-            String ownerTypeNorm,
-            String ownerNorm,
-            String mailAddressNorm) {
-
-        if ("investors".equals(ownerTypeNorm) && mailAddressNorm != null && !mailAddressNorm.isBlank()) {
-            return "MAILADDR_STATE";
-        }
-
-        if ("natural resource corporation".equals(ownerTypeNorm)) {
-            String anchor = buildAnchorKey(ownerNorm);
-            if (!anchor.isBlank() && !isGenericOwnerName(ownerNorm)) {
-                return "ANCHOR_STATE";
-            }
-        }
-
-        if ((LOOSE_TYPES.contains(ownerTypeNorm) || isShortName(ownerNorm)) && !isGenericOwnerName(ownerNorm)) {
-            return "OWNER_STATE";
-        }
-
-        return "OWNER_CITY_STATE";
+    // Loose corporate types can match across cities, but not if the name is generic
+    if (LOOSE_TYPES.contains(ownerTypeNorm) && !isGenericOwnerName(ownerNorm)) {
+        return ownerNorm + " | " + stateNorm;
     }
+
+    // Short names can also match across cities, but not if generic
+    if (isShortName(ownerNorm) && !isGenericOwnerName(ownerNorm)) {
+        return ownerNorm + " | " + stateNorm;
+    }
+
+    // Otherwise stay city-specific
+    return ownerNorm + " | " + cityNorm + " | " + stateNorm;
+}
+
+    private static String blockingModeForType(String ownerTypeNorm, String ownerNorm, String mailAddressNorm) {
+    if ("investors".equals(ownerTypeNorm) && mailAddressNorm != null && !mailAddressNorm.isBlank()) {
+        return "MAILADDR_STATE";
+    }
+
+    if ((LOOSE_TYPES.contains(ownerTypeNorm) || isShortName(ownerNorm)) && !isGenericOwnerName(ownerNorm)) {
+        return "OWNER_STATE";
+    }
+
+    return "OWNER_CITY_STATE";
+}
 
     // ------------------------------------------------------------
     // Merge decision logic
@@ -508,6 +468,7 @@ public class CsvCanonicalizer {
             return eval;
         }
 
+        // fallback: conservative default
         if (sameCity && ownerSimilarity >= STRICT_AUTO_THRESHOLD) {
             eval.mergeDecision = "AUTO_MERGE_DEFAULT";
             eval.needsReview = false;
@@ -528,6 +489,10 @@ public class CsvCanonicalizer {
     // Canonical choice
     // ------------------------------------------------------------
 
+    /**
+     * Canonical owner = most frequent original value.
+     * Ties: longer trimmed value, then alphabetical.
+     */
     private static String chooseCanonicalValue(Map<String, Integer> valueCounts) {
         if (valueCounts.isEmpty()) {
             return "";
@@ -537,30 +502,6 @@ public class CsvCanonicalizer {
                 .max(
                         Comparator.<Map.Entry<String, Integer>>comparingInt(Map.Entry::getValue)
                                 .thenComparingInt(e -> e.getKey().trim().length())
-                                .thenComparing(Map.Entry::getKey)
-                )
-                .map(Map.Entry::getKey)
-                .orElse("");
-    }
-
-    private static String chooseInvestorCanonicalFromMailAddress(ClusterData cluster, List<RowData> rows) {
-        Map<String, Integer> counts = new HashMap<>();
-
-        for (Integer idx : cluster.rowIndexes) {
-            RowData row = rows.get(idx);
-            if (row.mailAddressNormalized != null && !row.mailAddressNormalized.isBlank()) {
-                String canon = "investor " + row.mailAddressNormalized;
-                counts.merge(canon, 1, Integer::sum);
-            }
-        }
-
-        if (counts.isEmpty()) {
-            return "";
-        }
-
-        return counts.entrySet().stream()
-                .max(
-                        Comparator.<Map.Entry<String, Integer>>comparingInt(Map.Entry::getValue)
                                 .thenComparing(Map.Entry::getKey)
                 )
                 .map(Map.Entry::getKey)
@@ -613,6 +554,10 @@ public class CsvCanonicalizer {
     // Similarity
     // ------------------------------------------------------------
 
+    /**
+     * Dice coefficient over character bigrams.
+     * Returns 1.0 for exact match, 0.0 for no overlap.
+     */
     private static double diceCoefficientBigrams(String a, String b) {
         a = emptySafe(a);
         b = emptySafe(b);
@@ -727,18 +672,19 @@ public class CsvCanonicalizer {
                 "city_original",
                 "state_original",
                 "owner_type_code",
-                "mailadd_original",
-                "mailadd_norm",
                 "owner_norm",
                 "city_norm",
                 "state_norm",
+                "mailadd_original",
+                "mailadd_norm",
                 "cluster_input_norm",
                 "owner_similarity",
                 "same_city_flag",
                 "merge_decision",
                 "needs_review",
                 "scope_city_count",
-                "row_number"
+                "row_number",
+                
         };
 
         List<RowData> sorted = new ArrayList<>(rows);
@@ -757,27 +703,27 @@ public class CsvCanonicalizer {
 
             for (RowData row : sorted) {
                 printer.printRecord(
-                        row.clusterId,
-                        row.clusterSize,
-                        row.clusterKey,
-                        row.canonicalOwner,
-                        row.ownerOriginal,
-                        row.cityOriginal,
-                        row.stateOriginal,
-                        row.ownerTypeOriginal,
-                        row.mailAddressOriginal,
-                        row.mailAddressNormalized,
-                        row.ownerNormalized,
-                        row.cityNormalized,
-                        row.stateNormalized,
-                        row.compositeNormalized,
-                        String.format(Locale.US, "%.4f", row.ownerSimilarity),
-                        row.sameCityFlag ? "Y" : "",
-                        row.mergeDecision,
-                        row.needsReview,
-                        row.scopeCityCount,
-                        row.rowNumber
-                );
+        row.clusterId,
+        row.clusterSize,
+        row.clusterKey,
+        row.canonicalOwner,
+        row.ownerOriginal,
+        row.cityOriginal,
+        row.stateOriginal,
+        row.ownerTypeOriginal,
+        row.mailAddressOriginal,
+        row.mailAddressNormalized,
+        row.ownerNormalized,
+        row.cityNormalized,
+        row.stateNormalized,
+        row.compositeNormalized,
+        String.format(Locale.US, "%.4f", row.ownerSimilarity),
+        row.sameCityFlag ? "Y" : "",
+        row.mergeDecision,
+        row.needsReview,
+        row.scopeCityCount,
+        row.rowNumber
+);
             }
         }
     }
@@ -861,132 +807,124 @@ public class CsvCanonicalizer {
     // ------------------------------------------------------------
 
     private static boolean isShortName(String ownerNorm) {
-        if (ownerNorm == null || ownerNorm.trim().isEmpty()) {
-            return false;
-        }
-
-        int tokenCount = ownerNorm.trim().split("\\s+").length;
-        return tokenCount <= 2;
-    }
-
-    private static boolean isGenericOwnerName(String ownerNorm) {
-        if (ownerNorm == null || ownerNorm.trim().isEmpty()) {
-            return true;
-        }
-
-        String[] tokens = ownerNorm.trim().split("\\s+");
-        if (tokens.length == 0) {
-            return true;
-        }
-
-        int genericCount = 0;
-        for (String token : tokens) {
-            if (GENERIC_OWNER_TOKENS.contains(token)) {
-                genericCount++;
-            }
-        }
-
-        if (genericCount >= Math.max(2, tokens.length - 1)) {
-            return true;
-        }
-
-        if (tokens.length <= 3 && ownerNorm.contains("land")) {
-            return true;
-        }
-
+    if (ownerNorm == null || ownerNorm.trim().isEmpty()) {
         return false;
     }
 
-    private static List<String> extractAnchorTokens(String ownerNorm) {
-        if (ownerNorm == null || ownerNorm.isBlank()) {
-            return List.of();
-        }
-
-        return Arrays.stream(ownerNorm.split("\\s+"))
-                .filter(t -> !GENERIC_OWNER_TOKENS.contains(t))
-                .filter(t -> t.length() >= 4)
-                .collect(Collectors.toList());
+    int tokenCount = ownerNorm.trim().split("\\s+").length;
+    return tokenCount <= 2;
+}
+    
+    private static final Set<String> GENERIC_OWNER_TOKENS = Set.of(
+        "land",
+        "management",
+        "recovery",
+        "resources",
+        "resource",
+        "holdings",
+        "holding",
+        "investments",
+        "investment",
+        "properties",
+        "property",
+        "group",
+        "company",
+        "corp",
+        "corporation",
+        "llc",
+        "inc",
+        "wv"
+);
+    private static boolean isGenericOwnerName(String ownerNorm) {
+    if (ownerNorm == null || ownerNorm.trim().isEmpty()) {
+        return true;
     }
 
-    private static String buildAnchorKey(String ownerNorm) {
-        List<String> anchors = extractAnchorTokens(ownerNorm);
-        if (anchors.isEmpty()) {
-            return "";
-        }
-
-        return anchors.stream()
-                .limit(2)
-                .collect(Collectors.joining(" "));
+    String[] tokens = ownerNorm.trim().split("\\s+");
+    if (tokens.length == 0) {
+        return true;
     }
 
-    private static int tokenCount(String s) {
-        if (s == null || s.trim().isEmpty()) {
-            return 0;
+    int genericCount = 0;
+    for (String token : tokens) {
+        if (GENERIC_OWNER_TOKENS.contains(token)) {
+            genericCount++;
         }
-        return s.trim().split("\\s+").length;
     }
+
+    // generic if most tokens are generic, or if it contains "land" and is short
+    if (genericCount >= Math.max(2, tokens.length - 1)) {
+        return true;
+    }
+
+    if (tokens.length <= 3 && ownerNorm.contains("land")) {
+        return true;
+    }
+
+    return false;
+}
 
     private static String normalizeOwnerType(String s) {
-        String v = emptySafe(s).toLowerCase(Locale.ROOT).trim();
-        v = v.replace('_', ' ');
-        v = v.replace('-', ' ');
-        v = v.replace("&", "and");
-        v = v.replaceAll("\\s+", " ");
+    String v = emptySafe(s).toLowerCase(Locale.ROOT).trim();
+    v = v.replace('_', ' ');
+    v = v.replace('-', ' ');
+    v = v.replace("&", "and");
+    v = v.replaceAll("\\s+", " ");
 
-        if (v.equals("general corporate")) return "general corporate";
-        if (v.equals("natural resource corporation")) return "natural resource corporation";
-        if (v.equals("investors")) return "investors";
-        if (v.equals("banking and finance")) return "banking and finance";
-        if (v.equals("other")) return "other";
-        if (v.equals("heirs")) return "heirs";
+    if (v.equals("general corporate")) return "general corporate";
+    if (v.equals("natural resource corporation")) return "natural resource corporation";
+    if (v.equals("investors")) return "investors";
+    if (v.equals("banking and finance")) return "banking and finance";
+    if (v.equals("other")) return "other";
+    if (v.equals("heirs")) return "heirs";
 
-        return v;
+    return v;
+}
+
+private static String normalizeMailAddress(String s) {
+    if (s == null || s.trim().isEmpty()) {
+        return "";
     }
 
-    private static String normalizeMailAddress(String s) {
-        if (s == null || s.trim().isEmpty()) {
-            return "";
-        }
+    String v = s.toLowerCase(Locale.ROOT).trim();
+    v = v.replace("&", " and ");
+    v = v.replaceAll("[^a-z0-9\\s]", " ");
+    v = v.replaceAll("\\bp\\s*o\\s*box\\b", "po box");
+    v = v.replaceAll("\\bstreet\\b", "st");
+    v = v.replaceAll("\\bavenue\\b", "ave");
+    v = v.replaceAll("\\broad\\b", "rd");
+    v = v.replaceAll("\\bdrive\\b", "dr");
+    v = v.replaceAll("\\bboulevard\\b", "blvd");
+    v = v.replaceAll("\\blane\\b", "ln");
+    v = v.replaceAll("\\bcourt\\b", "ct");
+    v = v.replaceAll("\\bplace\\b", "pl");
+    v = v.replaceAll("\\bnorth\\b", "n");
+    v = v.replaceAll("\\bsouth\\b", "s");
+    v = v.replaceAll("\\beast\\b", "e");
+    v = v.replaceAll("\\bwest\\b", "w");
+    v = v.replaceAll("\\s+", " ").trim();
 
-        String v = s.toLowerCase(Locale.ROOT).trim();
-        v = v.replace("&", " and ");
-        v = v.replaceAll("[^a-z0-9\\s]", " ");
-        v = v.replaceAll("\\bp\\s*o\\s*box\\b", "po box");
-        v = v.replaceAll("\\bstreet\\b", "st");
-        v = v.replaceAll("\\bavenue\\b", "ave");
-        v = v.replaceAll("\\broad\\b", "rd");
-        v = v.replaceAll("\\bdrive\\b", "dr");
-        v = v.replaceAll("\\bboulevard\\b", "blvd");
-        v = v.replaceAll("\\blane\\b", "ln");
-        v = v.replaceAll("\\bcourt\\b", "ct");
-        v = v.replaceAll("\\bplace\\b", "pl");
-        v = v.replaceAll("\\bnorth\\b", "n");
-        v = v.replaceAll("\\bsouth\\b", "s");
-        v = v.replaceAll("\\beast\\b", "e");
-        v = v.replaceAll("\\bwest\\b", "w");
-        v = v.replaceAll("\\s+", " ").trim();
+    return v;
+}
 
-        return v;
-    }
-
-    private static String cleanHeader(String s) {
-        if (s == null) return "";
-        return s.replace("\uFEFF", "").trim();
-    }
-
+private static String cleanHeader(String s) {
+    if (s == null) return "";
+    return s.replace("\uFEFF", "").trim();
+}
     private static String resolveColumnName(List<String> headers, String requestedColumn) {
-        String target = cleanHeader(requestedColumn).toLowerCase(Locale.ROOT);
+    String target = cleanHeader(requestedColumn).toLowerCase();
 
-        for (String h : headers) {
-            if (cleanHeader(h).toLowerCase(Locale.ROOT).equals(target)) {
-                return h;
-            }
+    for (String h : headers) {
+        if (cleanHeader(h).toLowerCase().equals(target)) {
+            return h;  // return the actual header as stored
         }
-
-        throw new IllegalArgumentException(
-                "Column not found: " + requestedColumn + " ; headers found = " + headers
-        );
     }
+
+    throw new IllegalArgumentException(
+        "Column not found: " + requestedColumn + " ; headers found = " + headers
+    );
+}
+    
 
     private static void addIfMissing(List<String> headers, String column) {
         if (!headers.contains(column)) {
@@ -1014,65 +952,65 @@ public class CsvCanonicalizer {
     }
 
     private static boolean shouldApplyAggressiveTailStripping(String ownerTypeNorm) {
-        return "natural resource corporation".equals(ownerTypeNorm);
+    return "natural resource corporation".equals(ownerTypeNorm);
+
+}
+private static String stripAggressiveResourceTail(String s) {
+    if (s == null || s.trim().isEmpty()) {
+        return "";
     }
 
-    private static String stripAggressiveResourceTail(String s) {
-        if (s == null || s.trim().isEmpty()) {
-            return "";
+    String[] tokens = s.trim().split("\\s+");
+    StringBuilder kept = new StringBuilder();
+
+    for (String token : tokens) {
+        if (looksLikeResourceTailToken(token) || isResourceDescriptorToken(token)) {
+            break;
         }
 
-        String[] tokens = s.trim().split("\\s+");
-        StringBuilder kept = new StringBuilder();
-
-        for (String token : tokens) {
-            if (looksLikeResourceTailToken(token) || isResourceDescriptorToken(token)) {
-                break;
-            }
-
-            if (kept.length() > 0) {
-                kept.append(' ');
-            }
-            kept.append(token);
+        if (kept.length() > 0) {
+            kept.append(' ');
         }
-
-        return kept.toString().trim();
+        kept.append(token);
     }
 
-    private static boolean looksLikeResourceTailToken(String token) {
-        if (token == null || token.isEmpty()) {
-            return false;
-        }
-
-        String t = token.toLowerCase(Locale.ROOT);
-
-        if (t.matches(".*\\d.*")) {
-            return true;
-        }
-
-        if (t.matches("[a-z]+[\\-/][a-z0-9\\-/]*")) {
-            return true;
-        }
-
+    return kept.toString().trim();
+}
+private static boolean looksLikeResourceTailToken(String token) {
+    if (token == null || token.isEmpty()) {
         return false;
     }
 
-    private static boolean isResourceDescriptorToken(String token) {
-        if (token == null || token.isEmpty()) {
-            return false;
-        }
+    String t = token.toLowerCase(Locale.ROOT);
 
-        String t = token.toLowerCase(Locale.ROOT);
-
-        return t.equals("pt")
-                || t.equals("pat")
-                || t.equals("tr")
-                || t.equals("no")
-                || t.equals("ss")
-                || t.equals("lands")
-                || t.equals("land")
-                || t.equals("branch")
-                || t.equals("br")
-                || t.equals("chambers");
+    // any token with a digit is usually tract/deed/parcel detail
+    if (t.matches(".*\\d.*")) {
+        return true;
     }
+
+    // code-like tokens after punctuation normalization
+    if (t.matches("[a-z]+[\\-/][a-z0-9\\-/]*")) {
+        return true;
+    }
+
+    return false;
+}
+private static boolean isResourceDescriptorToken(String token) {
+    if (token == null || token.isEmpty()) {
+        return false;
+    }
+
+    String t = token.toLowerCase(Locale.ROOT);
+
+    return t.equals("pt")
+            || t.equals("pat")
+            || t.equals("tr")
+            || t.equals("no")
+            || t.equals("ss")
+            || t.equals("lands")
+            || t.equals("land")
+            || t.equals("branch")
+            || t.equals("br")
+            || t.equals("chambers");
+}
 }
